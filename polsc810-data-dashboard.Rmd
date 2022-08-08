@@ -21,6 +21,7 @@ library(here)
 knitr::opts_chunk$set(echo=TRUE)
 
 vdem <- readRDS(here::here("../../../Data Files/v-dem/Country_Year_V-Dem_Core_R_v12/V-Dem-CY-Core-v12.rds")) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year)
 
 countrynames <- sort(unique(vdem$country_name))
@@ -346,9 +347,9 @@ Inputs {.sidebar}
 
 selectInput("country", "Country Name", sort(countrynames))
 
-selectInput("xvar", "X Variable", sort(names(vdemdata)))
+selectInput("xvar", "X Variable", sort(names(vdem)))
 
-selectInput("yvar", "Y Variable", sort(names(vdemdata)))
+selectInput("yvar", "Y Variable", sort(names(vdem)))
 
 ```
 
@@ -366,11 +367,11 @@ vdemdata <- reactive({
   
   # V-Dem Data for applied example
 vdem <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year) 
 
 vdemselect <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
@@ -407,13 +408,14 @@ vdemdata2 <- reactive({
   
   # V-Dem Data for applied example
 vdem2 <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year) |> 
   group_by(year) |> 
-  dplyr::summarise(v2x_polyarchy = mean(v2x_polyarchy, na.rm = TRUE))
+  dplyr::summarise(v2x_polyarchy = mean(v2x_polyarchy, na.rm = TRUE),
+                   v2x_libdem = mean(v2x_libdem, na.rm = TRUE))
 
 vdemselect2 <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
@@ -448,13 +450,14 @@ vdemdata3 <- reactive({
   
   # V-Dem Data for applied example
 vdem3 <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year) |> 
   group_by(year) |> 
-  dplyr::summarise(v2x_polyarchy = sd(v2x_polyarchy, na.rm = TRUE))
+  dplyr::summarise(v2x_polyarchy = sd(v2x_polyarchy, na.rm = TRUE),
+                   v2x_libdem = sd(v2x_libdem, na.rm = TRUE))
 
 vdemselect3 <- vdem |> 
-  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
