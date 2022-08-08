@@ -5,6 +5,7 @@ output:
     css: polsc810-data-dashboard-css.css
     social: menu
     vertical_layout: fill
+    source_code: embed
 runtime: shiny
 ---
 
@@ -99,6 +100,13 @@ renderPlot({
 ```
 
 
+
+
+
+
+
+
+
 Page 2: Repeat Trials
 ==============================================================================
 
@@ -183,7 +191,7 @@ p1
 ```
 
 
-### Panel 2: Let's record the mean at ever 10, 100, 1000, and 10000 flips.
+### Panel 2: Let's record the mean at every 10, 100, 1000, and 10000 flips.
 
 ```{r, echo = FALSE}
 
