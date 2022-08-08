@@ -21,7 +21,7 @@ library(here)
 
 knitr::opts_chunk$set(echo=TRUE)
 
-vdem <- readRDS(here::here("../../../Data Files/v-dem/Country_Year_V-Dem_Core_R_v12/V-Dem-CY-Core-v12.rds")) |> 
+vdem <- readRDS(here::here("V-Dem-CY-Core-v12.rds")) |> 
   dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year)
 
