@@ -1,0 +1,477 @@
+---
+title: "POLSC/HIST 810 Data Dashboard Exercise"
+output:
+  flexdashboard::flex_dashboard:
+    css: polsc810-data-dashboard-css.css
+    social: menu
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r global, include = FALSE}
+
+library(flexdashboard)
+library(shiny)
+library(tidyverse)
+library(data.table)
+library(ggpmisc)
+library(ggtext)
+library(here)
+
+knitr::opts_chunk$set(echo=TRUE)
+
+vdem <- readRDS(here::here("../../../Data Files/v-dem/Country_Year_V-Dem_Core_R_v12/V-Dem-CY-Core-v12.rds")) |> 
+  arrange(country_name, year)
+
+countrynames <- sort(unique(vdem$country_name))
+
+
+```
+
+
+
+Page 1: Distributions 
+===========================================================================
+
+Inputs {.sidebar}
+---------------------------------------------------------------------------
+
+```{r, echo = FALSE}
+sliderInput('sampleSize', "Sample Size", min=0, max = 500,
+            value = 10, step = 1)
+```
+
+
+
+Column
+---------------------------------------------------------------------------
+
+### Panel A: Sampling Mean and Population Mean (Normal Distribution)
+
+The black line is the population mean. The blue line is the sample mean. How do the two compare?
+
+```{r}
+renderPlot({
+  
+  p <- ggplot(data = testdata <- tibble::tibble(x = rnorm(input$sampleSize, 0, 10)), aes(x = x)) +
+    geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
+    geom_vline(xintercept = 0, color = "black", size = 3) + # Population mean
+    theme_minimal()
+  
+  #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
+  yscale <- layer_scales(p)$y$range$range[2]
+  
+  p <-  p + geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) + (sd(testdata$x) / sqrt(input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - 1*(sd(testdata$x) / sqrt(input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_point(data = testdata, aes(x = mean(testdata$x)+(sd(testdata$x) / sqrt(input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_point(data = testdata, aes(x = mean(testdata$x)-1*(sd(testdata$x) / sqrt(input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_vline(xintercept = mean(testdata$x), color = "blue", linetype = 5 , size = 3) # Sample Mean line
+
+  
+  p
+})
+```
+
+
+### Panel B: Sampling Mean and Population Mean (Poisson Distrubtion)
+
+```{r}
+renderPlot({
+  
+  p <- ggplot(data = testdata <- tibble::tibble(x = rpois(input$sampleSize, lambda = 2)), aes(x = x)) +
+    geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
+    geom_vline(xintercept = 2, color = "black", size = 3) + # Population mean
+    theme_minimal()
+  
+  #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
+  yscale <- layer_scales(p)$y$range$range[2]
+  
+  p <-  p + geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) + (sqrt(mean(testdata$x)/input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - 1*(sqrt(mean(testdata$x)/input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_point(data = testdata, aes(x = mean(testdata$x)+(sqrt(mean(testdata$x)/input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_point(data = testdata, aes(x = mean(testdata$x)-1*(sqrt(mean(testdata$x)/input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_vline(xintercept = mean(testdata$x), color = "blue", linetype = 5, size = 3) # Sample Mean line
+
+  
+  p
+})
+```
+
+
+Page 2: Repeat Trials
+==============================================================================
+
+Inputs {.sidebar}
+------------------------------------------------------------------------------
+
+```{r, echo = FALSE}
+
+sliderInput('triallength', "How many flips in a single trial?", min=0, max = 10000,
+            value = 100, step = 10)
+
+
+sliderInput('repetitions', "How many times do we repeat the trial?", min=0, max = 1000,
+            value = 100, step = 10)
+
+```
+
+
+```{r simulated-bias-data, include = FALSE}
+
+data <- reactive({
+
+set.seed(66502)
+    
+N <- input$repetitions
+N.sample <- input$triallength
+
+temp <- data.table(index = seq(1:N))
+
+for(i in 1:N) {
+
+example <- data.table("index" = seq(1:N.sample))
+
+example[
+  , flip := rbinom(1, 1, prob = 0.5), by = "index"
+][
+  , meanflip := cummean(flip)
+]
+
+temp$`Flip 10`[i] <- ifelse(input$triallength >= 10, (0.5 - example$meanflip[example$index==10]), NA)
+temp$`Flip 100`[i] <- ifelse(input$triallength >= 100, (0.5 - example$meanflip[example$index==100]), NA)
+temp$`Flip 1000`[i] <- ifelse(input$triallength >= 1000, (0.5 - example$meanflip[example$index==1000]), NA)
+temp$`Flip 10000`[i] <- ifelse(input$triallength >= 10000, (0.5 - example$meanflip[example$index==10000]), NA)
+
+}
+
+temp <- melt(temp, measure.vars = c("Flip 10", "Flip 100", "Flip 1000", "Flip 10000")) |> 
+  group_by(variable) |> 
+  mutate(error = round(sd(value)/sqrt(N), 3)) |> 
+  ungroup()
+
+# Have to make this list to be able to call both of the data.frames from the reactive function
+list(example = example,
+     temp = temp)
+
+})
+
+
+```
+
+Column
+------------------------------------------------------------------------------
+
+### Panel 1: Let's flip a coin 10,000 times
+
+```{r, echo = FALSE}
+
+renderPlot({
+
+
+p1 <- ggplot(data = data()$example, aes(x = data()$example$index, y = data()$example$meanflip)) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 0.5, size = 1, color = "red") +
+  theme_minimal() +
+  labs(x = "Flip #",
+       y = "Running mean value")
+
+p1
+
+})
+
+```
+
+
+### Panel 2: Let's record the mean at ever 10, 100, 1000, and 10000 flips.
+
+```{r, echo = FALSE}
+
+renderPlot({
+  
+
+p2 <- ggplot(data()$temp, aes(x = index, y = value, group = variable)) +
+  geom_point(alpha = 0.5, size = 2) +
+  geom_hline(yintercept = 0, size = 0.4, color = "red") +
+  facet_wrap(. ~ variable, ncol = 4) +
+  geom_text(aes(label = glue::glue("Std. Error. = {data()$temp$error}"), x = 0, y = -0.35), hjust=0, size = 5, color = "red") +
+  theme_minimal() +
+  labs(x = "Index",
+       y = "Recorded mean value")
+
+p2
+
+})
+
+```
+
+
+### Panel 3: Now let's check the dispersion of those mean values at each flip interval
+
+```{r, echo = FALSE}
+
+renderPlot({
+  
+  p3 <- ggplot(data()$temp, aes(x = data()$temp$value, group = data()$temp$variable)) +
+  geom_density(alpha = 0.7, fill = "dodgerblue1") +
+  geom_vline(xintercept = 0, size = 0.5, color = "red") +
+  facet_wrap(. ~ variable, ncol = 4) +
+  theme_minimal() +
+    labs(x = "Recorded mean value",
+         y = "Density")
+  
+  p3
+  
+})
+
+```
+
+
+
+
+
+Page 3: Relationships and Confounding
+==============================================================================
+
+Inputs {.sidebar}
+------------------------------------------------------------------------------
+
+```{r, echo = FALSE}
+sliderInput('conThreshold', "Admission Selectivity Threshold", min=0, max = 5,
+            value = 3.0, step = 0.1)
+
+```
+Higher values are more selective and lower values are less selective
+
+
+```{r, include=FALSE}
+# Set up basic simulated values as inputs for the chunks below. This ensures the simulated data used is the same in both panels.
+# 
+set.seed(123)
+x <- rnorm(1e4, 0, 1)
+
+y <- rnorm(1e4, 0.75 * x, 1)
+```
+
+1. How does the selectivity threshold change the relationship between Extracuriculars and GPA?
+
+2. But what if we're implicity conditioning on college admissions?
+
+
+
+
+Column
+---------------------------------------------------------------------------
+
+### Panel A: Bivariate Relationship
+
+```{r, echo = FALSE}
+
+renderPlot({
+
+# Simulated data for confounding example
+
+z <- ifelse(x + y > input$conThreshold, "Admitted", "Not Admitted")
+
+df <- data.frame(x = x, y = y, z = z)
+
+
+lm1 <- lm(y ~ x, data = df)
+lm2 <- lm(y ~ x, data = subset(df, z == "Admitted"))
+
+coval <- as.numeric(paste(round(coef(lm2)[2], 2)))
+
+p1 <- ggplot(data = df %>% filter(z == "Admitted"), aes(x = x, y = y)) +
+  geom_point(alpha = 0.6, aes(color = z), show.legend = FALSE) +
+  stat_poly_line() +
+  stat_poly_eq(aes(label = paste(after_stat(eq.label),
+                                 after_stat(rr.label), sep = "*\", \"*")), 
+                 size = 8) +   
+  theme_light() +
+  viridis::scale_color_viridis(option = "magma", discrete = TRUE, begin = 0.1, end = 0.9) +
+  theme(plot.title = element_text(face = "bold", size = 20)) +
+  labs(color = "Group",
+       x = "Extracuriculars",
+       y = "GPA",
+       title = "What's the relationship between extracuricular activities and GPA?")
+
+p1
+
+})
+
+```
+
+
+### Panel B: Confounding!
+
+```{r}
+renderPlot({
+  
+  # Ok, got it! We have to include only the reactive portions down here, but the rest of the data only needs to be called once in the reactive section above.
+  z <- ifelse(x + y > input$conThreshold, "Admitted", "Not Admitted")
+
+  df <- data.frame(x = x, y = y, z = z)
+
+
+  p2 <- ggplot(data = df, aes(x = x, y = y)) +
+    geom_point(alpha = 0.7, aes(color = z)) +
+    stat_poly_line() +
+    stat_poly_eq(aes(label = paste(after_stat(eq.label),
+                                 after_stat(rr.label), sep = "*\", \"*")), 
+                 size = 8) +    
+    theme_light() +
+    theme(plot.title = element_text(face = "bold", size = 20)) +
+    viridis::scale_color_viridis(option = "magma", discrete = TRUE, begin = 0.1, end = 0.8) +
+    labs(color = "Group",
+       x = "Extracuriculars",
+       y = "GPA",
+       title = "But what if we're implicitly conditioning on college admission?")
+  
+  p2
+
+  })
+
+```
+
+
+
+
+
+Page 4: Exploring Data {data-orientation=rows}
+===============================================================================
+
+Inputs {.sidebar}
+------------------------------------------------------------------------------
+
+```{r, echo = FALSE}
+
+selectInput("country", "Country Name", sort(countrynames))
+
+selectInput("xvar", "X Variable", sort(names(vdemdata)))
+
+selectInput("yvar", "Y Variable", sort(names(vdemdata)))
+
+```
+
+
+
+Row
+---------------------------------------------------------------------------------
+
+### Panel A: Bivariate relationships for country
+
+```{r, echo = FALSE}
+
+
+vdemdata <- reactive({
+  
+  # V-Dem Data for applied example
+vdem <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year) 
+
+vdemselect <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year)  |> 
+  filter(country_name == input$country)
+  
+    list(vdem = vdem,
+         vdemselect= vdemselect)
+})
+
+
+renderPlot({
+
+  p1 <- ggplot() + # Not sure why but aes_string is required to get the plot to be reactive
+    geom_point(data = vdemdata()$vdem, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
+    geom_line(data = vdemdata()$vdemselect, aes_string(x = input$xvar, y = input$yvar), 
+                                               color = "orange", size = 2, alpha = 1) +
+    theme_minimal()
+  
+  p1
+  
+})
+
+
+```
+
+
+Row
+----------------------------------------------------------------------------------
+
+### Average polyarchy score
+
+```{r, echo = FALSE}
+
+
+vdemdata2 <- reactive({
+  
+  # V-Dem Data for applied example
+vdem2 <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year) |> 
+  group_by(year) |> 
+  dplyr::summarise(v2x_polyarchy = mean(v2x_polyarchy, na.rm = TRUE))
+
+vdemselect2 <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year)  |> 
+  filter(country_name == input$country)
+  
+    list(vdem2 = vdem2,
+         vdemselect2  = vdemselect2)
+})
+
+
+renderPlot({
+
+  p2 <- ggplot() + # Not sure why but aes_string is required to get the plot to be reactive
+    geom_line(data = vdemdata2()$vdem2, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
+    geom_line(data = vdemdata2()$vdemselect2, aes_string(x = input$xvar, y = input$yvar), 
+                                               color = "orange", size = 2, alpha = 1) +
+    theme_minimal()
+  
+  p2
+  
+})
+
+
+```
+
+
+
+### Standard deviation of polyarchy scores
+
+```{r, echo = FALSE}
+
+
+vdemdata3 <- reactive({
+  
+  # V-Dem Data for applied example
+vdem3 <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year) |> 
+  group_by(year) |> 
+  dplyr::summarise(v2x_polyarchy = sd(v2x_polyarchy, na.rm = TRUE))
+
+vdemselect3 <- vdem |> 
+  dplyr::select(year, country_name, v2x_polyarchy) |> 
+  arrange(country_name, year)  |> 
+  filter(country_name == input$country)
+  
+    list(vdem3 = vdem3,
+         vdemselect3  = vdemselect3)
+})
+
+
+renderPlot({
+
+  p3 <- ggplot() + # Not sure why but aes_string is required to get the plot to be reactive
+    geom_line(data = vdemdata3()$vdem3, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
+    theme_minimal() 
+  
+  p3
+  
+})
+
+
+```
