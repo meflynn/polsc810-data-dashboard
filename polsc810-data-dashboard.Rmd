@@ -11,28 +11,45 @@ runtime: shiny
 
 ```{r global, include = FALSE}
 
-library(flexdashboard)
-library(shiny)
+
 library(tidyverse)
 library(data.table)
 library(ggpmisc)
 library(ggtext)
 library(here)
+library(dagitty)
+library(ggdag)
+library(plotly)
+library(flexdashboard)
+library(shiny)
+library(ggrepel)
+library(flynnprojects)
+
+sysfonts:: font_add_google("Oswald", family = "oswald")
+showtext::showtext_auto()
+showtext::showtext_opts(dpi = 300)
 
 knitr::opts_chunk$set(echo=TRUE)
 
+nmcdata <- readr::read_csv(here::here("NMC_5_0.csv")) |> 
+  dplyr::select(ccode, year, cinc, tpop, upop, milper, milex, irst)
+
 vdem <- readRDS(here::here("V-Dem-CY-Core-v12.rds")) |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
-  arrange(country_name, year)
+  dplyr::select(country_name, COWcode, v2x_polyarchy, v2x_libdem, year) |> 
+  dplyr::rename("ccode" = "COWcode") |> 
+  dplyr::arrange(country_name, year) |> 
+    dplyr::left_join(nmcdata)
 
 countrynames <- sort(unique(vdem$country_name))
+
+
 
 
 ```
 
 
 
-Page 1: Distributions 
+Page 1: Distributions {data-oriention=rows}
 ===========================================================================
 
 Inputs {.sidebar}
@@ -43,22 +60,27 @@ sliderInput('sampleSize', "Sample Size", min=0, max = 500,
             value = 10, step = 1)
 ```
 
+### Notes
+
+Let's start by looking at some basic distributions. Whether we know it or not, many of our guesses, inferences, and judgements about the likelihood of events are based in some basic distributional assumptions.
+
+The four distributions shows here are the normal (Panel A), the Poisson (Panel B), the Student's t distribution (Panel C), and the Bernoulli Distribution (Panel D). Each of these has its own characteristics and we'll be using these to think about the limitations of simple summary statistics like the mean that we often use to inform our thinking.
+
+In each of thse panels the black line is the population mean, the blue line is the sample mean, and the red lines represent the standard error of the sample mean. The pink bars are the histogram bars that show the relative frequency (Y axis) of specific values we observer in the data (the X axis).
 
 
-Column
+Row 
 ---------------------------------------------------------------------------
 
-### Panel A: Sampling Mean and Population Mean (Normal Distribution)
+### Panel A: Normal Distribution
 
-The black line is the population mean. The blue line is the sample mean. How do the two compare?
-
-```{r}
+```{r, echo=FALSE}
 renderPlot({
   
   p <- ggplot(data = testdata <- tibble::tibble(x = rnorm(input$sampleSize, 0, 10)), aes(x = x)) +
     geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
     geom_vline(xintercept = 0, color = "black", size = 3) + # Population mean
-    theme_minimal()
+    theme_flynn(base_family = "oswald", base_size = 10)
   
   #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
   yscale <- layer_scales(p)$y$range$range[2]
@@ -75,23 +97,23 @@ renderPlot({
 ```
 
 
-### Panel B: Sampling Mean and Population Mean (Poisson Distrubtion)
+### Panel B: Poisson Distrubtion
 
-```{r}
+```{r, echo=FALSE}
 renderPlot({
   
   p <- ggplot(data = testdata <- tibble::tibble(x = rpois(input$sampleSize, lambda = 2)), aes(x = x)) +
     geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
     geom_vline(xintercept = 2, color = "black", size = 3) + # Population mean
-    theme_minimal()
+    theme_flynn(base_family = "oswald", base_size = 10)
   
   #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
   yscale <- layer_scales(p)$y$range$range[2]
   
   p <-  p + geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) + (sqrt(mean(testdata$x)/input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
-    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - 1*(sqrt(mean(testdata$x)/input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - (sqrt(mean(testdata$x)/input$sampleSize)), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
     geom_point(data = testdata, aes(x = mean(testdata$x)+(sqrt(mean(testdata$x)/input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
-    geom_point(data = testdata, aes(x = mean(testdata$x)-1*(sqrt(mean(testdata$x)/input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_point(data = testdata, aes(x = mean(testdata$x)-(sqrt(mean(testdata$x)/input$sampleSize)), y = 0 ), color = "red", size = 6) + # Bar point caps
     geom_vline(xintercept = mean(testdata$x), color = "blue", linetype = 5, size = 3) # Sample Mean line
 
   
@@ -99,6 +121,65 @@ renderPlot({
 })
 ```
 
+
+Row
+------------------------------------------------------------------------------
+
+### Panel C: Student's t Distrubtion
+
+```{r, echo=FALSE}
+renderPlot({
+  
+  #sqrt(((1/input$sampleSize) * (sum(x - 0)^2)))
+  
+  p <- ggplot(data = testdata <- tibble::tibble(x = brms::rstudent_t(input$sampleSize, 2.25, 0, 2)), aes(x = x)) +
+    geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
+    geom_vline(xintercept = 0, color = "black", size = 3) + # Population mean
+    theme_flynn(base_family = "oswald", base_size = 10)
+  
+  #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
+  yscale <- layer_scales(p)$y$range$range[2]
+  
+  p <-  p + geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) + sqrt(((1/input$sampleSize) * (sum(x - 0)^2))), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - sqrt(((1/input$sampleSize) * (sum(x - 0)^2))), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_point(data = testdata, aes(x = mean(testdata$x)+sqrt(((1/input$sampleSize) * (sum(x - 0)^2))), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_point(data = testdata, aes(x = mean(testdata$x)-sqrt(((1/input$sampleSize) * (sum(x - 0)^2))), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_vline(xintercept = mean(testdata$x), color = "blue", linetype = 5, size = 3) # Sample Mean line
+
+  
+  p
+})
+
+```
+
+
+
+### Panel D: Bernoulli Distrubtion
+
+```{r, echo=FALSE}
+renderPlot({
+  
+  testdata <- tibble::tibble(x = rbinom(input$sampleSize, size = 1, prob = 0.5))
+  
+  p <- ggplot(data = testdata, aes(x = x)) +
+    geom_histogram(bins = 40, color = "black", size = 0.1, fill = "pink", alpha = 0.4) +
+    geom_vline(xintercept = 0.5, color = "black", size = 3) + # Population mean
+    theme_flynn(base_family = "oswald", base_size = 10)
+  
+  #  Note that I had to add some code to the solution that I found. The default layer_scales(p)$y$range$range returns a concencated object containing both the beginning and the end values. Using [2] calls the ending value.
+  yscale <- layer_scales(p)$y$range$range[2]
+  
+  p <-  p + geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) + (sqrt(mean(testdata$x)*(1-mean(testdata$x)))), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_segment(data = testdata, aes(x = mean(testdata$x), xend = mean(testdata$x) - (sqrt(mean(testdata$x)*(1-mean(testdata$x)))), y =0, yend = 0), color = "red", size = 2) + # Standard Error Segment
+    geom_point(data = testdata, aes(x = mean(testdata$x)+(sqrt(mean(testdata$x)*(1-mean(testdata$x)))), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_point(data = testdata, aes(x = mean(testdata$x)-(sqrt(mean(testdata$x)*(1-mean(testdata$x)))), y = 0 ), color = "red", size = 6) + # Bar point caps
+    geom_vline(xintercept = mean(testdata$x), color = "blue", linetype = 5, size = 3) # Sample Mean line
+
+  p
+
+  })
+
+```
 
 
 
@@ -125,7 +206,19 @@ sliderInput('repetitions', "How many times do we repeat the trial?", min=0, max 
 ```
 
 
-```{r simulated-bias-data, include = FALSE}
+### Notes
+
+Sometimes it's hard to tell from a few observations what the "true" value of some parameter is. This is why repeat sampling can be useful—any individual sample observation may (indeed, almost as a rule will) exhibit some degree of bias. So we need to look at the values of multiple sample observations over several iterations.
+
+1. The first panel records the running average of a coin flip (i.e. 0 or 1). This represents just one case where we flip a coin N times.
+
+2. The second panel records the average value on the 10th, 100th, 1000th, or 10000th flip across K iterations of step 1.
+
+3. The third  panel shows the distribution of those average values from step 2.
+
+
+
+```{r simulated-bias-data, echo=FALSE, include = FALSE}
 
 data <- reactive({
 
@@ -180,7 +273,7 @@ renderPlot({
 p1 <- ggplot(data = data()$example, aes(x = data()$example$index, y = data()$example$meanflip)) +
   geom_line(size = 1) +
   geom_hline(yintercept = 0.5, size = 1, color = "red") +
-  theme_minimal() +
+  theme_flynn(base_family = "oswald", base_size = 5) +
   labs(x = "Flip #",
        y = "Running mean value")
 
@@ -202,8 +295,8 @@ p2 <- ggplot(data()$temp, aes(x = index, y = value, group = variable)) +
   geom_point(alpha = 0.5, size = 2) +
   geom_hline(yintercept = 0, size = 0.4, color = "red") +
   facet_wrap(. ~ variable, ncol = 4) +
-  geom_text(aes(label = glue::glue("Std. Error. = {data()$temp$error}"), x = 0, y = -0.35), hjust=0, size = 5, color = "red") +
-  theme_minimal() +
+  #geom_text(aes(label = glue::glue("Std. Error. = {data()$temp$error}"), x = 0, y = -0.35), hjust=0, size = 5, color = "red") +
+  theme_flynn(base_family = "oswald", base_size = 5) +
   labs(x = "Index",
        y = "Recorded mean value")
 
@@ -224,7 +317,7 @@ renderPlot({
   geom_density(alpha = 0.7, fill = "dodgerblue1") +
   geom_vline(xintercept = 0, size = 0.5, color = "red") +
   facet_wrap(. ~ variable, ncol = 4) +
-  theme_minimal() +
+  theme_flynn(base_family = "oswald", base_size = 5) +
     labs(x = "Recorded mean value",
          y = "Density")
   
@@ -238,7 +331,7 @@ renderPlot({
 
 
 
-Page 3: Relationships and Confounding
+Page 3: Relationships and Bias {data-orientation=rows}
 ==============================================================================
 
 Inputs {.sidebar}
@@ -249,95 +342,167 @@ sliderInput('conThreshold', "Admission Selectivity Threshold", min=0, max = 5,
             value = 3.0, step = 0.1)
 
 ```
-Higher values are more selective and lower values are less selective
+
+### Notes
 
 
-```{r, include=FALSE}
+
+
+```{r, echo=FALSE, include=FALSE}
 # Set up basic simulated values as inputs for the chunks below. This ensures the simulated data used is the same in both panels.
 # 
 set.seed(123)
-x <- rnorm(1e4, 0, 1)
+N <- 1e3
+#"0°", "5°", "10°", "15°", "20°"
+cardata <- data.frame(incline = runif(n = N, min = 0, max = 45)) |> 
+  mutate(pedal_pressure = 20 + incline * 1.2 + rnorm(n = N, mean = 0, sd = 0.4),
+         speed = 45 + 1.25*pedal_pressure - 1.50*incline + rnorm(n = N, mean = 0, sd = 0.2)) 
 
-y <- rnorm(1e4, 0.75 * x, 1)
+# Base Rate Fallacy
+
+
+N.1 <- 1e3
+N.2 <- 1e3
+
+mu.1 <- c(X  = -5, Y = 0)
+sigma.1 <- matrix(c(1, 0, 0, 1), ncol = 2)
+
+mu.2 <- c(X  = 5, Y = 0)
+sigma.2 <- matrix(c(1, 0, 0, 1), ncol = 2)
+
+
+baserate <- data.frame("Vaccinated" = MASS::mvrnorm(n = N.1, mu = mu.1, Sigma = sigma.1),
+                       "Unvaccinated" = MASS::mvrnorm(n = N.2, mu = mu.2, Sigma = sigma.2)) |> 
+  pivot_longer(cols = 1:4,
+               names_to = c("Group", "Var"),
+               names_sep = c("\\.")) |> 
+  pivot_wider(names_from = "Var") |> 
+  unnest() |> 
+  slice(-c(2000:1300)) |> 
+  group_by(Group) |> 
+  mutate(Hospitalized = case_when(
+    Group == "Vaccinated" ~ rbinom(n = length(.data$Group=="Vaccinated"), size = 1, prob = 0.05),
+    Group == "Unvaccinated" ~ rbinom(n = length(.data$Group=="Unvaccinated"), size = 1, prob = 0.10)
+  ),
+  Hospitalized = factor(Hospitalized,
+                        levels = c(0, 1),
+                        labels = c("Not Hospitalized", "Hospitalized")),
+  Group = factor(Group, 
+                 levels = c("Vaccinated" , "Unvaccinated"),
+                 labels = c("Vaccinated", "Unvaccinated")))
+  
+counts <- data.frame(status = c("Vaccinated", "Unvaccinated"),
+                     count =c(sum(baserate$Hospitalized=="Hospitalized" & baserate$Group=="Vaccinated"),
+                     sum(baserate$Hospitalized=="Hospitalized" & baserate$Group=="Unvaccinated")))
+
+
+# Simpson's Paradox Data
+data2 <- data.frame(x = rnorm(N, mean = 8, sd = 3)) |>
+  mutate(y = 130 + 10 * x + rnorm(N, mean = 0, sd = 10)) |>
+  filter(x^2 + y^2 < 42000 & x^2 + y^2 > 35000) |>  # Eliminate some outliers so it looks more rounded with less harsh slopes at edges
+  mutate(sum = x + y,
+         age = ntile(x = sum,
+                     n = 5),
+         age = factor(age,
+                      labels = c("Age 1", "Age 2", "Age 3", "Age 4", "Age 5")))
+
+
+# Collider Bias Data
+N <- 1e4
+
+collider.data <- data.frame(effort = rnorm(N, mean = 0, sd = 1)) |> 
+  mutate(gpa = rnorm(N, mean = 0, sd = 1),
+         admitted = ifelse(gpa * effort > 2.0 & gpa>0 & effort>0, "Admitted", "Rejected"))
 ```
 
-1. How does the selectivity threshold change the relationship between Extracuriculars and GPA?
-
-2. But what if we're implicity conditioning on college admissions?
 
 
 
-
-Column
+Row
 ---------------------------------------------------------------------------
 
-### Panel A: Bivariate Relationship
+### Panel A: Confounding
 
 ```{r, echo = FALSE}
 
-renderPlot({
-
-# Simulated data for confounding example
-
-z <- ifelse(x + y > input$conThreshold, "Admitted", "Not Admitted")
-
-df <- data.frame(x = x, y = y, z = z)
 
 
-lm1 <- lm(y ~ x, data = df)
-lm2 <- lm(y ~ x, data = subset(df, z == "Admitted"))
+ggplot(cardata, aes(x = pedal_pressure, y = speed)) +
+  geom_point(size = 2.5, shape = 21, fill = "black") +
+  theme_flynn(base_family = "oswald", base_size = 11) +
+  scale_x_continuous(breaks = seq(20, 100, 10)) +
+  viridis::scale_fill_viridis(option = "magma") +
+  labs(x = "Pedal Pressure",
+       y = "Speed (mph)",
+       title = "Car speed and pedal pressure",
+       subtitle = "We should expect cars to go faster as we apply more pressure, so what gives?")
 
-coval <- as.numeric(paste(round(coef(lm2)[2], 2)))
-
-p1 <- ggplot(data = df %>% filter(z == "Admitted"), aes(x = x, y = y)) +
-  geom_point(alpha = 0.6, aes(color = z), show.legend = FALSE) +
-  stat_poly_line() +
-  stat_poly_eq(aes(label = paste(after_stat(eq.label),
-                                 after_stat(rr.label), sep = "*\", \"*")), 
-                 size = 8) +   
-  theme_light() +
-  viridis::scale_color_viridis(option = "magma", discrete = TRUE, begin = 0.1, end = 0.9) +
-  theme(plot.title = element_text(face = "bold", size = 20)) +
-  labs(color = "Group",
-       x = "Extracuriculars",
-       y = "GPA",
-       title = "What's the relationship between extracuricular activities and GPA?")
-
-p1
-
-})
 
 ```
 
 
-### Panel B: Confounding!
+### Panel B: Base Rate Fallacy
 
-```{r}
-renderPlot({
-  
-  # Ok, got it! We have to include only the reactive portions down here, but the rest of the data only needs to be called once in the reactive section above.
-  z <- ifelse(x + y > input$conThreshold, "Admitted", "Not Admitted")
+```{r, echo = FALSE}
 
-  df <- data.frame(x = x, y = y, z = z)
+library(gridExtra)
+library(ggpp)
+
+ggplot(baserate |> filter(Hospitalized == "Hospitalized"), aes(x = Group, y = Y, fill = Group)) +
+  geom_point(size = 2.5, shape = 21, position = position_jitter(width = 0.2)) +
+  geom_table(data = counts, aes(x = 0.5, y = 2.5), label = list(counts)) +
+  theme_flynn(base_family = "oswald", base_size = 11) +
+    theme(text = element_text(family = "oswald"),
+          axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  viridis::scale_fill_viridis(option = "magma", 
+                              discrete = TRUE,
+                              begin = 0.0,
+                              end = 0.9) +
+  labs(x = "",
+       y = "",
+       title = "Hospitalization Among Vaccinated and Unvaccinated Individuals",
+       subtitle = "How can the vaccine be protective if most hospitalized people are vaccinated?")
+
+```
 
 
-  p2 <- ggplot(data = df, aes(x = x, y = y)) +
-    geom_point(alpha = 0.7, aes(color = z)) +
-    stat_poly_line() +
-    stat_poly_eq(aes(label = paste(after_stat(eq.label),
-                                 after_stat(rr.label), sep = "*\", \"*")), 
-                 size = 8) +    
-    theme_light() +
-    theme(plot.title = element_text(face = "bold", size = 20)) +
-    viridis::scale_color_viridis(option = "magma", discrete = TRUE, begin = 0.1, end = 0.8) +
-    labs(color = "Group",
-       x = "Extracuriculars",
+Row
+------------------------------------------------------------------------------------
+
+### Panel C: Simpson's Paradox
+
+```{r simpsons-paradox, echo = FALSE}
+
+ggplot(data2, aes(x = x, y = y)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous(breaks = seq(round(min(data2$x),0), round(max(data2$x), 0), 1),
+                     limits = c(round(min(data2$x),0), round(max(data2$x), 0))) +
+  theme_flynn(base_family = "oswald", base_size = 11) +
+  labs(x = "Exercise",
+       y = "Cholesterol",
+       title = "Relationship between exercise and cholesterol",
+       subtitle = "How could cholesterol increase with more exercise?")
+
+```
+
+
+
+### Panel D: Collider Bias
+
+```{r, echo=FALSE}
+
+ggplot(collider.data |> filter(admitted == "Admitted"), aes(x = effort, y = gpa)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  theme_flynn(base_family = "oswald", base_size = 11) + 
+  labs(x = "Extracurriculars",
        y = "GPA",
-       title = "But what if we're implicitly conditioning on college admission?")
-  
-  p2
-
-  })
+       title = "Collider Bias",
+       subtitle = "Why do students who are more active with extracurriculars have poorer grades?")
 
 ```
 
@@ -345,7 +510,129 @@ renderPlot({
 
 
 
-Page 4: Exploring Data {data-orientation=rows}
+
+
+
+Page 4: Exploring Data 1 {data-orientation=rows}
+===============================================================================
+
+Notes {.sidebar}
+------------------------------------------------------------------------------
+
+### Notes
+
+Before you begin to explore the data take a minute to write down your preliminary guesses to a few questions:
+
+1. Does interstate war become more or less common over time?
+2. During which time periods do you expect to see spikes in the frequency of interstate wars?
+3. Which conflicts do you expect produce the highest number of battle deaths?
+4. Which conflict(s) do you expect will be the longest lasting? The shortest?
+
+After you write down your preliminary answers use the figures on this page to answer the questions. You can hover over the figures to reveal information about specific cases.
+
+
+
+Row
+--------------------------------------------------------------------------------
+### Panel A: Time Series
+
+
+```{r time-series, echo = FALSE, warning=FALSE, message=FALSE}
+
+  duration <- readr::read_csv("Inter-StateWarData_v4.0.csv") |> 
+    dplyr::rowwise() |> 
+    dplyr::mutate(duration = as.Date(glue::glue("{EndYear1}-{EndMonth1}-{EndDay1}")) - as.Date(glue::glue("{StartYear1}-{StartMonth1}-{StartDay1}"))) |> 
+  dplyr::filter(!is.na(duration)) 
+  
+  timeseries <- readr::read_csv("Inter-StateWarData_v4.0.csv") |> 
+    dplyr::rowwise() |> # This is necessary to get the list(seq()) part to work!
+    dplyr::mutate(year = list(seq(StartYear1, EndYear1))) |> 
+    tidyr::unnest(year) |> 
+    dplyr::arrange(WarNum, StateName, year) |> 
+    dplyr::group_by(year) |> 
+    dplyr::summarise(warcount = dplyr::n_distinct(WarNum)) |> 
+    dplyr::full_join(tibble::tibble(year = seq(1815,2007,1))) |> 
+    dplyr::mutate(warcount = ifelse(is.na(warcount), 0, warcount)) 
+  
+  fatalities <- readr::read_csv("Inter-StateWarData_v4.0.csv") |> 
+    dplyr::group_by(WarNum, WarName) |> 
+    dplyr::summarise(battledeaths = max(BatDeath, na.rm = TRUE)) 
+    
+
+  cowdata <- list("duration" = duration,
+                  "timeseries" = timeseries,
+                  "fatalities" = fatalities)
+  
+
+  p1 <- ggplot2::ggplot(data = cowdata$timeseries, aes(x = year, y = warcount)) + 
+      geom_bar(fill = "dodgerblue1", color = "black", stat = "identity") +
+      theme_flynn(base_family = "oswald", base_size = 5)  +
+      labs(x = "Year",
+           y = "Count",
+           title = "Time series showing  number of wars per year")
+  
+  fig1 <- ggplotly(p1)
+  
+  fig1
+  
+
+```
+
+
+
+Row
+--------------------------------------------------------------------------------
+### Panel B: Battledeaths
+
+```{r battledeaths}
+
+
+
+p2 <- ggplot2::ggplot(data = cowdata$fatalities, aes(x = battledeaths)) + 
+      geom_histogram(stat = "count", fill = "dodgerblue1", color = "black", size = 0.1, bins = 30) +
+      theme_flynn(base_family = "oswald", base_size = 5)  +
+      labs(x = "Battledeaths",
+           y = "Count",
+           title = "Histogram displaying recorded battledeaths by war")
+  
+    fig2 <- ggplotly(p2)
+  
+    fig2
+    
+
+  
+```
+
+
+
+Row
+--------------------------------------------------------------------------------
+### Panel C: Duration
+
+```{r duration}
+
+
+
+  
+     p3 <- ggplot2::ggplot(data = cowdata$duration, aes(x = duration, text = glue::glue("{WarName}, {StateName}"))) + 
+    geom_histogram(fill = "dodgerblue1", color = "black", size = 0.1, binwidth = 365) +
+    theme_flynn(base_family = "oswald", base_size = 5)  +
+  scale_x_continuous(breaks = seq(0, 6000, 365)) +
+    labs(x = "Duration in days",
+         y = "Count",
+         title = "Histogram displaying the duration of interstate wars by belligerents")
+  
+  fig3 <- ggplotly(p3)
+  
+  fig3
+    
+
+```
+
+
+
+
+Page 5: Exploring Data 2 {data-orientation=rows}
 ===============================================================================
 
 Inputs {.sidebar}
@@ -359,7 +646,28 @@ selectInput("xvar", "X Variable", sort(names(vdem)))
 
 selectInput("yvar", "Y Variable", sort(names(vdem)))
 
+sliderInput('bincount', "Histogram Bins", min=10, max = 100,
+            value = 30, step = 1)
 ```
+
+Now that we've looked at simulated data, and a little bit of real data, let's look at some more real data. But this time let's work in more complex relationships. This page contains data from the Varieties of Democracy Project, which codes various aspects of a country's democratic institutions. Larger/more positive values generally indicate better performance on a given indicator, meaning better or more democratic. Conversely, lower scores generally indicate poorer performance. 
+
+It also draws on data from the Correlates of War Project's (COW) National Material Capabilities data set, which records information on a country's capabilities that can be used for waging war.
+
+The key variables here are:
+
+1. v2x_polyarchy: The overall index of democracy in a given country-year.
+2. v2x_libdem: The overall index of liberal democracy in a given country-year
+3. cinc: Combined capabilities index
+4. milex: Military expenditures (thousands of dollars)
+5. milper: Military personnel (in thousands)
+6. tpop: Total population
+7. upop: Urban population
+8. irst: Iron and steel production
+
+Also included are variables to identify particular countries, and a year variable to identify particular years.
+
+Panel A shows the selected country's data relative to all of the countries in the data. Panel B shows the global average of the selected Y variable compared to the selected country. Panel C shows the standard deviation of the selected Y variable. Panel D shows the distribution of the selected Y variable.
 
 
 
@@ -375,11 +683,11 @@ vdemdata <- reactive({
   
   # V-Dem Data for applied example
 vdem <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
   arrange(country_name, year) 
 
+
 vdemselect <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
@@ -394,7 +702,7 @@ renderPlot({
     geom_point(data = vdemdata()$vdem, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
     geom_line(data = vdemdata()$vdemselect, aes_string(x = input$xvar, y = input$yvar), 
                                                color = "orange", size = 2, alpha = 1) +
-    theme_minimal()
+    theme_flynn(base_family = "oswald", base_size = 5)
   
   p1
   
@@ -407,7 +715,7 @@ renderPlot({
 Row
 ----------------------------------------------------------------------------------
 
-### Average polyarchy score
+### Panel B: Average Y variable across X
 
 ```{r, echo = FALSE}
 
@@ -416,14 +724,13 @@ vdemdata2 <- reactive({
   
   # V-Dem Data for applied example
 vdem2 <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
-  arrange(country_name, year) |> 
-  group_by(year) |> 
-  dplyr::summarise(v2x_polyarchy = mean(v2x_polyarchy, na.rm = TRUE),
-                   v2x_libdem = mean(v2x_libdem, na.rm = TRUE))
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
+  dplyr::arrange(country_name, year) |> 
+  dplyr::group_by(year) |> 
+  dplyr::summarise(across(everything(), mean, na.rm = TRUE))
 
 vdemselect2 <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
@@ -438,7 +745,7 @@ renderPlot({
     geom_line(data = vdemdata2()$vdem2, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
     geom_line(data = vdemdata2()$vdemselect2, aes_string(x = input$xvar, y = input$yvar), 
                                                color = "orange", size = 2, alpha = 1) +
-    theme_minimal()
+    theme_flynn(base_family = "oswald", base_size = 5)
   
   p2
   
@@ -449,7 +756,7 @@ renderPlot({
 
 
 
-### Standard deviation of polyarchy scores
+### Panel C: Standard deviation of Y variable across X
 
 ```{r, echo = FALSE}
 
@@ -458,14 +765,51 @@ vdemdata3 <- reactive({
   
   # V-Dem Data for applied example
 vdem3 <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
   arrange(country_name, year) |> 
   group_by(year) |> 
-  dplyr::summarise(v2x_polyarchy = sd(v2x_polyarchy, na.rm = TRUE),
-                   v2x_libdem = sd(v2x_libdem, na.rm = TRUE))
+  dplyr::summarise(across(everything(), sd, na.rm = TRUE))
 
 vdemselect3 <- vdem |> 
-  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year) |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
+  arrange(country_name, year)  |> 
+  filter(country_name == input$country)
+  
+    list(vdem3 = vdem3,
+         vdemselect3 = vdemselect3)
+})
+
+
+renderPlot({
+
+  p3 <- ggplot(data = vdemdata3()$vdem3) + # Not sure why but aes_string is required to get the plot to be reactive
+    geom_line(aes_string(x = input$xvar, y = input$yvar), size = 2, alpha = 0.3) +
+    theme_flynn(base_family = "oswald", base_size = 5) 
+  
+  p3
+  
+})
+
+
+```
+
+
+
+### Panel D: Distribution of Y variable
+
+
+```{r, echo = FALSE}
+
+vdemdata3 <- reactive({
+
+  vdem3 <- vdem |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
+  arrange(country_name, year) |> 
+  group_by(year) |> 
+  dplyr::summarise(across(everything(), sd, na.rm = TRUE))
+
+vdemselect3 <- vdem |> 
+  dplyr::select(country_name, v2x_polyarchy, v2x_libdem, year, ccode, cinc, tpop, upop, milex, milper, irst) |> 
   arrange(country_name, year)  |> 
   filter(country_name == input$country)
   
@@ -476,13 +820,18 @@ vdemselect3 <- vdem |>
 
 renderPlot({
 
-  p3 <- ggplot() + # Not sure why but aes_string is required to get the plot to be reactive
-    geom_line(data = vdemdata3()$vdem3, aes_string(x = input$xvar, y = input$yvar),size = 2, alpha = 0.3) +
-    theme_minimal() 
+  p4 <- ggplot() + # Not sure why but aes_string is required to get the plot to be reactive
+    geom_histogram(data = vdemdata3()$vdem3, aes_string(x = input$yvar), bins = input$bincount, size = 0.1, alpha = 0.4) +
+        geom_histogram(data = vdemdata3()$vdemselect3, aes_string(x = input$yvar), bins = input$bincount, size = 0.1, alpha = 0.4, fill = "orange") +
+
+    theme_flynn(base_family = "oswald", base_size = 5) 
   
-  p3
+  p4
   
 })
 
 
 ```
+
+
+
