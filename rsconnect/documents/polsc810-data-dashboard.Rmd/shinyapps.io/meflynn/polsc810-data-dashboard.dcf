@@ -1,13 +1,13 @@
 name: polsc810-data-dashboard
-title: polsc810-data-dashboard
+title:
 username:
 account: meflynn
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 6755849
-bundleId: 7681486
+bundleId: 7773745
 url: https://meflynn.shinyapps.io/polsc810-data-dashboard/
-when: 1694642431.96053
-lastSyncTime: 1694642431.96054
+when: 1696629915.97073
+lastSyncTime: 1696629915.97075
 asMultiple: FALSE
 asStatic: FALSE
